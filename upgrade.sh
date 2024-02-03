@@ -6,11 +6,11 @@ cd "$(dirname $0)"
 source .venv/bin/activate
 
 pip3 install --upgrade \
-    accelerate \
     diffusers \
     gradio \
-    optimum \
     torch \
     transformers
+
+# Not needed for the demo: accelerate, optimum
 
 pip3 freeze > requirements.txt

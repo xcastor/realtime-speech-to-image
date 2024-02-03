@@ -4,6 +4,7 @@ import datetime
 import html
 import os
 import queue
+import subprocess
 import sys
 import threading
 
@@ -11,7 +12,7 @@ import diffusers
 import gradio as gr
 import torch
 import transformers
-from transformers.pipelines.audio_utils import ffmpeg_microphone_live
+from transformers.pipelines import audio_utils
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -145,10 +146,26 @@ def thread_generate_image(diffusionPipeline):
         img = generate_image(diffusionPipeline, prompt)
 
 
+_microphone = None
+def get_audio():
+    """Returns the first directshow microphone on Windows."""
+    global _microphone
+    if not _microphone:
+        p = subprocess.Popen(
+            ["ffmpeg", "-list_devices", "true", "-hide_banner", "-f", "dshow", "-i", "dummy"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out = p.communicate()[1].splitlines()
+        while not out[0].endswith(b" DirectShow audio devices"):
+                out = out[1:]
+        _microphone = out[1].decode("ascii").split("]", 2)[1].strip()[1:-1]
+        print(f"Using microphone: {_microphone}")
+    return "audio=" + _microphone
+
+
 def thread_transcribe(transcriber, chunk_length_s=5.0, stream_chunk_s=1.0):
     sys.stdout.write("Start talking....\n")
     while not get_stop():
-        mic = ffmpeg_microphone_live(
+        mic = audio_utils.ffmpeg_microphone_live(
             sampling_rate=transcriber.feature_extractor.sampling_rate,
             chunk_length_s=chunk_length_s,
             stream_chunk_s=stream_chunk_s,
@@ -197,6 +214,9 @@ def main():
     os.chdir(BASE_DIR)
     if not os.path.exists(OUT_DIR):
         os.mkdir(OUT_DIR)
+    if sys.platform == "win32":
+        # Workaround a broken logic.
+        audio_utils._get_microphone_name = get_audio
 
     # Determine the device acceleration type.
     device = "cpu"
